@@ -3,10 +3,6 @@ import math
 import random
 import json
 import analyze
-# import matlab.engine
-
-# eng = matlab.engine.start_matlab()
-
 
 class Network(object):
     def __init__(self,
@@ -17,11 +13,8 @@ class Network(object):
                service = ("exponential",[0.1]*5),
                queue = "FCFS",
                preemption = False,
-               scheduler = "MAF",
-               MTL = False):
+               scheduler = "MAF"):
 
-
-        self.MTL = MTL
         self.num_source = num_source
         self.num_packet = num_packet
         self.num_server = num_server
@@ -49,6 +42,7 @@ class Network(object):
             self.Qtype = queue
             self.waiting = [[]]*num_source #TODO story de yaptığımız gibi tanımlamak lazım
         def add(self,source_id,packet):
+            source_id = int(source_id)
             if self.Qtype == "FCFS":
                 self.waiting[source_id] = [packet] + self.waiting[source_id]
             elif self.Qtype == "LCFS":
@@ -65,13 +59,7 @@ class Network(object):
 
     def packet_generator(self,num_packet,num_source,arrival,seed = 0):
         if arrival[0] == "poisson":
-            if self.MTL:
-                arr_matlab = []
-                for i in arrival[1]:
-                    arr_matlab.append(eng.exprnd(float(np.divide(1,i)),1,num_packet))
-                self.arr = np.reshape(arr_matlab,[num_packet,num_source])
-            else:
-                self.arr = np.random.exponential(np.divide(1,arrival[1]),(num_packet,num_source))
+            self.arr = np.random.exponential(np.divide(1,arrival[1]),(num_packet,num_source))
         elif arrival[0] == "deterministic":
             self.arr = np.ones((num_packet,num_source))*arrival[1]
 
@@ -140,24 +128,29 @@ class Network(object):
                 self.__init__(*self.arg)
             return self.servicetime[source_id].pop(0) #TODO: Seed aynı kalıyor sıkıntı olmasın... !!!
 
+    # def newService(self,source_id):
+    #     self.arrival = self.Queue.delete(int(source_id))
+    #     self.departure = self.currenttime + self.Service.time(source_id)
+    #     self.Service.id = source_id
+
     def newService(self,source_id):
-        self.arrival = self.Queue.delete(int(source_id))
+        source_id = int(source_id)
+        self.arrival = self.Queue.nextvalue(source_id)
         self.departure = self.currenttime + self.Service.time(source_id)
         self.Service.id = source_id
 
-    def newServicePreemptive(self,source_id):
-        self.arrival = self.Queue.nextvalue(int(source_id))
-        self.departure = self.currenttime + self.Service.time(source_id)
-        self.Service.id = source_id
-
-    def completeService(self):
-        self.store(int(self.Service.id), self.arrival, self.departure)  # Complete service
+    def completeService(self,source_id):
+        source_id = int(source_id)
+        self.Queue.delete(source_id)
+        self.store(source_id, self.arrival, self.departure)  # Complete service
+        if self.arrival > self.freshstory[source_id][-1][0]:
+            self.freshstore(source_id, self.arrival, self.departure)  # Age effective Complete service
         self.Service.id = -1
 
-    def freshcompleteService(self,source_id):
-        if self.arrival > self.freshstory[int(source_id)][-1][0]:
-            self.freshstore(int(source_id), self.arrival, self.departure)  # Age effective Complete service
-            # self.freshness[int(source_id)] = False
+    # def freshcompleteService(self,source_id):
+    #     if self.arrival > self.freshstory[int(source_id)][-1][0]:
+    #         self.freshstore(int(source_id), self.arrival, self.departure)  # Age effective Complete service
+    #         # self.freshness[int(source_id)] = False
 
     def controller(self):
         if not (self.controlSteps or any(self.Queue.waiting)):
@@ -170,30 +163,22 @@ class Network(object):
 
             if source_id == []:
                 self.currenttime, source_id = self.controlSteps.pop(0)
-                self.Queue.add(int(source_id), self.currenttime)
-                # self.freshness[int(source_id)] = True
+                self.Queue.add(source_id, self.currenttime)
             else:
                 arrivaltime = self.Queue.nextvalue(source_id)
-            source_id = int(source_id)
-            self.newServicePreemptive(source_id)
+            self.newService(source_id)
             if len(self.controlSteps) and self.controlSteps[0][0] < self.departure:
                 (arrivaltime_ib, source_id_ib) = self.controlSteps.pop(0)
-                self.Queue.add(int(source_id_ib), arrivaltime_ib)
+                self.Queue.add(source_id_ib, arrivaltime_ib)
                 self.currenttime = arrivaltime_ib
                 new_source_id = self.Scheduler.nextmove(self.currenttime)
                 if not(source_id == source_id_ib or (new_source_id != source_id)):
                     # NO PREEMPTION
                     self.currenttime = self.departure
-                    self.Queue.delete(source_id)
-                    self.completeService()
-                    self.freshcompleteService(source_id)
-                # else:
-                #     self.freshness[int(source_id_ib)] = True
+                    self.completeService(source_id)
             else:
                 self.currenttime = self.departure
-                self.Queue.delete(source_id)
-                self.completeService()
-                self.freshcompleteService(source_id)
+                self.completeService(source_id)
 
 
         else: # LCFS-nonpreemptive ve FCFS için
@@ -201,18 +186,15 @@ class Network(object):
 
             if source_id == []:
                 self.currenttime, source_id = self.controlSteps.pop(0)
-                self.Queue.add(int(source_id), self.currenttime)
+                self.Queue.add(source_id, self.currenttime)
             else:
-                arrivaltime = self.Queue.nextvalue(source_id)
-            source_id = int(source_id)
+                arrivaltime = self.Queue.nextvalue(source_id) #TODO ne işe yarıyor
             self.newService(source_id)
             while len(self.controlSteps) and self.controlSteps[0][0] < self.departure:
                 (arrivaltime_ib, source_id_ib) = self.controlSteps.pop(0)
-                self.Queue.add(int(source_id_ib), arrivaltime_ib)
-                # self.idle = False
+                self.Queue.add(source_id_ib, arrivaltime_ib)
             self.currenttime = self.departure  # TODO gerek var mı??
-            self.completeService()
-            self.freshcompleteService(source_id)
+            self.completeService(source_id)
 
 
     def run(self):
