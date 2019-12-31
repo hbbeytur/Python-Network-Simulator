@@ -2,13 +2,13 @@ import numpy as np
 import math
 import random
 import json
-import analyze
+# import analyze
 
 class Network(object):
     def __init__(self,
                  num_source = 5,
                num_server = 1,
-               num_packet = 1000,
+               num_packet = 20000,
                arrival = ("poisson",[1]*5),
                service = ("exponential",[0.1]*5),
                queue = "FCFS",
@@ -66,7 +66,7 @@ class Network(object):
         self.arr = np.cumsum(self.arr,0)
         self.generatecontrolinstances(num_source, num_packet,self.arr)
 
-        self.arr = np.insert(self.arr,0,0,axis=0) #TODO: bu gerekli mi
+        self.arr = np.insert(self.arr,0,0,axis=0)
         self.arr = self.arr.T
 
     def generatecontrolinstances(self,num_source,num_packet,arr):
@@ -115,8 +115,6 @@ class Network(object):
         def __init__(self,num_source,num_packet,num_server,service,seed = 15):
             self.arg = [num_source,num_packet,num_server,service,seed]
 
-            self.id = -1 # Service yapılması muhtemel source ın id'si, -1 ise önceki service tamamlanmış.
-
             if service[0] == "exponential":
                 self.servicetime = np.random.exponential(np.divide(1,service[1]),(num_packet,num_source))
             elif service[0] == "determisinistic":
@@ -126,7 +124,7 @@ class Network(object):
         def time(self,source_id):
             if not self.servicetime[source_id]:
                 self.__init__(*self.arg)
-            return self.servicetime[source_id].pop(0) #TODO: Seed aynı kalıyor sıkıntı olmasın... !!!
+            return self.servicetime[source_id].pop(0)
 
     # def newService(self,source_id):
     #     self.arrival = self.Queue.delete(int(source_id))
@@ -137,7 +135,6 @@ class Network(object):
         source_id = int(source_id)
         self.arrival = self.Queue.nextvalue(source_id)
         self.departure = self.currenttime + self.Service.time(source_id)
-        self.Service.id = source_id
 
     def completeService(self,source_id):
         source_id = int(source_id)
@@ -145,7 +142,6 @@ class Network(object):
         self.store(source_id, self.arrival, self.departure)  # Complete service
         if self.arrival > self.freshstory[source_id][-1][0]:
             self.freshstore(source_id, self.arrival, self.departure)  # Age effective Complete service
-        self.Service.id = -1
 
     # def freshcompleteService(self,source_id):
     #     if self.arrival > self.freshstory[int(source_id)][-1][0]:
@@ -158,14 +154,14 @@ class Network(object):
             self.termination = True
             return 0
 
-        if self.preemption: # LCFS-preemptive için #TODO: subfunctionlar preemptive case için özel olarak düzenlenebilir.
+        if self.preemption: # LCFS-preemptive için
             source_id = self.Scheduler.nextmove(self.currenttime)
 
             if source_id == []:
                 self.currenttime, source_id = self.controlSteps.pop(0)
                 self.Queue.add(source_id, self.currenttime)
-            else:
-                arrivaltime = self.Queue.nextvalue(source_id)
+            # else:
+            #     arrivaltime = self.Queue.nextvalue(source_id)
             self.newService(source_id)
             if len(self.controlSteps) and self.controlSteps[0][0] < self.departure:
                 (arrivaltime_ib, source_id_ib) = self.controlSteps.pop(0)
@@ -181,41 +177,41 @@ class Network(object):
                 self.completeService(source_id)
 
 
-        else: # LCFS-nonpreemptive ve FCFS için
+        else: # LCFS-nonpreemptive ve FCFS için #TODO LCFS-nonpreemptive çalışmıyor!!! (rate=1 --> age=5)
             source_id = self.Scheduler.nextmove(self.currenttime)
 
             if source_id == []:
                 self.currenttime, source_id = self.controlSteps.pop(0)
                 self.Queue.add(source_id, self.currenttime)
-            else:
-                arrivaltime = self.Queue.nextvalue(source_id) #TODO ne işe yarıyor
+
             self.newService(source_id)
             while len(self.controlSteps) and self.controlSteps[0][0] < self.departure:
                 (arrivaltime_ib, source_id_ib) = self.controlSteps.pop(0)
                 self.Queue.add(source_id_ib, arrivaltime_ib)
-            self.currenttime = self.departure  # TODO gerek var mı??
+            self.currenttime = self.departure
             self.completeService(source_id)
-
 
     def run(self):
         while not self.termination:
             self.controller()
 
 if __name__ == "__main__":
+    import analyze
+
     database = []
-    num_source = 2
+    num_source = 1
     logging = False
 
 
-    for arrRate in np.linspace(0.01,0.99,num=99):
+    for arrRate in [0.5]:
         print(arrRate)
-        net = Network(num_source= num_source,queue="FCFS",arrival=("poisson",[arrRate , 0.01]),service=("exponential",[1]*num_source))
+        net = Network(num_source= num_source,queue="LCFS",arrival=("poisson",[arrRate]),service=("exponential",[1]*num_source))
         net.run()
 
         ## CALCULATE Average Age per user
         average_age = []
-        for record in net.story:
-            average_age.append(analyze.calculate_average_age2(record))
+        for record in net.freshstory:
+            average_age.append(analyze.calculate_average_age(record))
 
         print(average_age)
 
