@@ -5,7 +5,7 @@ import numpy as np
 num_source = 1
 num_packet = 10000
 # arrivalRate = np.linspace(0.1,0.99,99)
-arrivalRate = [0.8]
+arrivalRate = [1]
 ages = []
 for rate in arrivalRate:
 	print(rate)
@@ -13,8 +13,8 @@ for rate in arrivalRate:
 						  num_packet=num_packet,
 						  arrival=("poisson",[rate]),
 						  service=("exponential",[1]),
-						  queue="FCFS",
-						  preemption=False)
+						  queue="LCFS",
+						  preemption=True)
 	net.run()
 
 	average_age = []

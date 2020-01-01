@@ -48,9 +48,10 @@ class Network(object):
             elif self.Qtype == "LCFS":
                 self.waiting[source_id] = self.waiting[source_id] + [packet]
         def delete(self,source_id):
-            if self.waiting[source_id]:
-                return self.waiting[source_id].pop()
-            else: return -1
+            source_id = int(source_id)
+            # if self.waiting[source_id]:
+            return self.waiting[source_id].pop()
+            # else: return -1
         def nextvalue(self,source_id):
             return self.waiting[source_id][-1]
         def preempt(self,source_id,packet):
@@ -93,19 +94,19 @@ class Network(object):
                 return self.MAD(time)
         def MAF(self,time):
         # TODO: decide schedule among age-effective and exist packets. Burası daha iyi olabilir
-            inst_age = [time - item[-1][1] for item in self.network.story] # Calculates the inst. age by currentTime - lastDeparture
-            nonempties = list(filter(lambda x: self.network.Queue.waiting[int(x)] != [], range(self.num_source)))
-            cand_ids = []
+            self.inst_age = [time - item[-1][1] for item in self.network.story] # Calculates the inst. age by currentTime - lastDeparture
+            self.nonempties = list(filter(lambda x: self.network.Queue.waiting[int(x)] != [], range(self.num_source)))
+            self.cand_ids = []
             max_age = 0
-            for x in nonempties:
-                if inst_age[x] > max_age:
-                    max_age = inst_age[x]
-                    cand_ids = [x]
-                elif inst_age[x] == max_age:
-                    cand_ids.append(x)
+            for x in self.nonempties:
+                if self.inst_age[x] > max_age:
+                    max_age = self.inst_age[x]
+                    self.cand_ids = [x]
+                elif self.inst_age[x] == max_age:
+                    self.cand_ids.append(x)
 
-            if len(cand_ids) > 0:
-                return int(random.choice(cand_ids))
+            if len(self.cand_ids) > 0:
+                return int(random.choice(self.cand_ids))
             else:
                 return []
         def MAD(self,time):
@@ -138,7 +139,7 @@ class Network(object):
 
     def completeService(self,source_id):
         source_id = int(source_id)
-        self.Queue.delete(source_id)
+        # self.Queue.delete(source_id)
         self.store(source_id, self.arrival, self.departure)  # Complete service
         if self.arrival > self.freshstory[source_id][-1][0]:
             self.freshstore(source_id, self.arrival, self.departure)  # Age effective Complete service
@@ -171,9 +172,11 @@ class Network(object):
                 if not(source_id == source_id_ib or (new_source_id != source_id)):
                     # NO PREEMPTION
                     self.currenttime = self.departure
+                    self.Queue.delete(source_id)
                     self.completeService(source_id)
             else:
                 self.currenttime = self.departure
+                self.Queue.delete(source_id)
                 self.completeService(source_id)
 
 
@@ -185,6 +188,7 @@ class Network(object):
                 self.Queue.add(source_id, self.currenttime)
 
             self.newService(source_id)
+            self.Queue.delete(source_id)
             while len(self.controlSteps) and self.controlSteps[0][0] < self.departure:
                 (arrivaltime_ib, source_id_ib) = self.controlSteps.pop(0)
                 self.Queue.add(source_id_ib, arrivaltime_ib)
