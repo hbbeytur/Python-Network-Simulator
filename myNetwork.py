@@ -12,8 +12,8 @@ class Network(object):
                  service = ("exponential",[0.1]*5),
                  queue = "FCFS",
                  queueSize = None,
-                 preemption = False,
-                 scheduler = "NORMAL", #MAF, NORMAL, NORMAL-DISCARD, MAD
+                 preemption = True,
+                 scheduler = "Normal", #MAF, NORMAL, NORMAL-DISCARD, MAD
                  preemptiveDiscard = False):
 
         self.num_source = num_source
@@ -161,11 +161,11 @@ class Network(object):
                 self.servicetime = np.random.gamma(2,np.divide(1, np.multiply(2,service[1])), (num_packet, num_source))
             self.servicetime = self.servicetime.T.tolist()
 
-        def time(self,source_id):
-            return np.random.exponential(1/self.service[1][source_id])
-            # if not self.servicetime[source_id]:
-            #     self.__init__(*self.arg)
-            # return self.servicetime[source_id].pop(0)
+        def time(self,source_id): #TODO: burda saçmalık var
+            # return np.random.exponential(1/self.service[1][source_id])
+            if not self.servicetime[source_id]:
+                self.__init__(*self.arg)
+            return self.servicetime[source_id].pop(0)
 
     def newService(self,source_id):
         # source_id = int(source_id)
@@ -243,11 +243,11 @@ if __name__ == "__main__":
     import analyze
 
     database = []
-    num_source = 1
+    num_source = 3
     logging = False
 
 
-    for arrRate in [0.5]:
+    for arrRate in [2]:
         print(arrRate)
         net = Network(num_source= num_source,queue="LCFS",arrival=("poisson",[arrRate]),service=("exponential",[1]*num_source))
         net.run()

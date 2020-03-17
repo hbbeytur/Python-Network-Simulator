@@ -2,15 +2,15 @@ import myNetwork, analyze
 import numpy as np
 import itertools
 
-MATLAB = False
+MATLAB = True
 
 if MATLAB:
     import matlab.engine
-    eng = matlab.engine.start_matlab()
+    eng = matlab.engine.start_matlab("-desktop background")
 
 # num_source = 2
 num_packet = 30000
-num_sources = range(2,3)
+num_sources = range(1,2)
 arrivalRate = np.linspace(0.1,5,10)
 # arrivalRate = [10]
 ages = []
@@ -41,3 +41,5 @@ for rate, num_source,scheduler,preemption in itertools.product(arrivalRate,num_s
 	# theoricAge = 1/mu * (((1+p+p**2)**2 + 2*p**3)/((1+p+p**2)*(1+p)**2) +(1+p**2/(1+p))*(1/pi))
 	# print(theoricAge)
 	ages.append(average_age)
+
+
