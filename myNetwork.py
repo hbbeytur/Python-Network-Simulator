@@ -3,23 +3,18 @@ import math
 import random
 import json
 
-MATLAB = False
-
-if MATLAB:
-    import matlab.engine
-    eng = matlab.engine.start_matlab()
-
 class Network(object):
     def __init__(self,
                  num_source = 5,
-               num_server = 1,
-               num_packet = 20000,
-               arrival = ("poisson",[1]*5),
-               service = ("exponential",[0.1]*5),
-               queue = "FCFS",
-               preemption = False,
-               scheduler = "MAF", #MAF, NORMAL, NOMARL-DISCARD, MAD
-               preemptiveDiscard = True):
+                 num_server = 1,
+                 num_packet = 20000,
+                 arrival = ("poisson",[1]*5),
+                 service = ("exponential",[0.1]*5),
+                 queue = "FCFS",
+                 queueSize = None,
+                 preemption = False,
+                 scheduler = "NORMAL", #MAF, NORMAL, NORMAL-DISCARD, MAD
+                 preemptiveDiscard = False):
 
         self.num_source = num_source
         self.num_packet = num_packet
@@ -27,12 +22,13 @@ class Network(object):
         self.arrivalsetting = arrival
         self.service = service
         self.queue = queue
+        self.queueSize = queueSize
         self.preemption = preemption
         self.scheduler = scheduler
         self.preemptiveDiscard = preemptiveDiscard
 
         self.packet_generator(num_packet,num_source,arrival)
-        self.Queue = self.Queue(queue,num_source)
+        self.Queue = self.Queue(queue,num_source,queueSize)
         self.Service = self.Service(num_source,num_packet,num_server,service)
         self.Scheduler = self.Scheduler(scheduler,preemption,num_source,self)
 
@@ -44,8 +40,9 @@ class Network(object):
         self.termination = False
 
     class Queue(object): # Stores arrival time of waiting packets
-        def __init__(self,queue,num_source):
+        def __init__(self,queue,num_source,queueSize):
             self.Qtype = queue
+            self.size = queueSize
             self.waiting = [[]]*num_source #TODO story de yaptığımız gibi tanımlamak lazım
         def add(self,source_id,packet):
             # source_id = int(source_id)
@@ -53,6 +50,7 @@ class Network(object):
                 self.waiting[source_id] = [packet] + self.waiting[source_id]
             elif self.Qtype == "LCFS":
                 self.waiting[source_id] = self.waiting[source_id] + [packet]
+
         def delete(self,source_id):
             # source_id = int(source_id)
             return self.waiting[source_id].pop()
@@ -63,15 +61,11 @@ class Network(object):
 
     def packet_generator(self,num_packet,num_source,arrival,seed = 0):
         if arrival[0] == "poisson":
-            if MATLAB:
-                b = []
-                for i in arrival[1]:
-                    b.extend(eng.exprnd(1/i, num_packet, 1))
-                self.arr = np.reshape(b, [num_source, num_packet]).T
-            else:
-                self.arr = np.random.exponential(np.divide(1,arrival[1]),(num_packet,num_source))
+            self.arr = np.random.exponential(np.divide(1,arrival[1]),(num_packet,num_source))
         elif arrival[0] == "deterministic":
             self.arr = np.ones((num_packet,num_source))*arrival[1]
+        elif arrival[0] == "erlang2":
+            self.arr = np.random.gamma(2,np.divide(1,arrival[1]),(num_packet,num_source))
 
         self.arr = np.cumsum(self.arr,0)
         self.generatecontrolinstances(num_source, num_packet,self.arr)
@@ -104,21 +98,9 @@ class Network(object):
             elif self.scheduler == "Normal":
                 return self.Normal()
         def MAF(self,time):
-        # TODO: decide schedule among age-effective and exist packets. Burası daha iyi olabilir
-        #     self.inst_age = [time - item[-1][0] for item in self.network.freshstory] # Calculates the inst. age by currentTime - lastDeparture
-        #     self.nonempties = list(filter(lambda x: self.network.Queue.waiting[x] != [], range(self.num_source)))
-        #     self.cand_ids = []
-        #     max_age = 0
-        #     for x in self.nonempties:
-        #         if self.inst_age[x] > max_age:
-        #             max_age = self.inst_age[x]
-        #             self.cand_ids = [x]
-        #         elif self.inst_age[x] == max_age:
-        #             self.cand_ids.append(x)
-        #     return self.returnID()
-
             self.nonempties = list(filter(lambda x: self.network.Queue.waiting[x] != [], range(self.num_source)))
-            self.ageeffectives = list(filter(lambda x: self.network.Queue.waiting[x][-1] > self.network.freshstory[x][-1][0], self.nonempties))
+            # self.ageeffectives = list(filter(lambda x: self.network.Queue.waiting[x][-1] > self.network.freshstory[x][-1][0], self.nonempties))
+            self.ageeffectives = self.nonempties
             if self.ageeffectives:
                 self.inst_age = [time - self.network.freshstory[i][-1][0] for i in self.ageeffectives]
                 self.cand = np.argwhere(np.amax(self.inst_age) == self.inst_age).ravel()
@@ -128,7 +110,16 @@ class Network(object):
             return self.returnID()
 
         def MAD(self,time):
-            pass
+            self.nonempties = list(filter(lambda x: self.network.Queue.waiting[x] != [], range(self.num_source)))
+            # self.ageeffectives = list(filter(lambda x: self.network.Queue.waiting[x][-1] > self.network.freshstory[x][-1][0],self.nonempties))
+            self.ageeffectives = self.nonempties
+            if self.ageeffectives:
+                self.inst_age = [self.network.Queue.waiting[i][-1] - self.network.freshstory[i][-1][0] for i in self.ageeffectives]
+                self.cand = np.argwhere(np.amax(self.inst_age) == self.inst_age).ravel()
+                self.cand_ids = [self.ageeffectives[i] for i in self.cand]
+            else:
+                self.cand_ids = self.nonempties
+            return self.returnID()
 
         def randomScheduler(self):
             self.cand_ids = list(filter(lambda x: self.network.Queue.waiting[x] != [], range(self.num_source)))
@@ -163,15 +154,11 @@ class Network(object):
             self.service = service
 
             if service[0] == "exponential":
-                if MATLAB:
-                    b = []
-                    for i in service[1]:
-                        b.extend(eng.exprnd(1 / i, num_packet, 1))
-                    self.servicetime = np.reshape(b, [num_source, num_packet]).T
-                else:
-                    self.servicetime = np.random.exponential(np.divide(1,service[1]),(num_packet,num_source))
+                self.servicetime = np.random.exponential(np.divide(1,service[1]),(num_packet,num_source))
             elif service[0] == "determisinistic":
                 self.servicetime = np.ones((num_packet, num_source)) * service[1]
+            elif service[0] == "erlang2":
+                self.servicetime = np.random.gamma(2,np.divide(1, np.multiply(2,service[1])), (num_packet, num_source))
             self.servicetime = self.servicetime.T.tolist()
 
         def time(self,source_id):
@@ -202,6 +189,9 @@ class Network(object):
             source_id = self.Scheduler.nextmove(self.currenttime)
 
             if source_id == []:
+                if not(self.controlSteps):
+                    self.termination = True
+                    return
                 self.currenttime, source_id = self.controlSteps.pop(0)
                 source_id = int(source_id)
                 self.Queue.add(source_id, self.currenttime)
@@ -229,6 +219,9 @@ class Network(object):
             source_id = self.Scheduler.nextmove(self.currenttime)
 
             if source_id == []:
+                if not(self.controlSteps):
+                    self.termination = True
+                    return
                 self.currenttime, source_id = self.controlSteps.pop(0)
                 source_id = int(source_id)
                 self.Queue.add(source_id, self.currenttime)
