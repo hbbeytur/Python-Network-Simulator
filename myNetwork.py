@@ -14,7 +14,8 @@ class Network(object):
                  queueSize = None,
                  preemption = True,
                  scheduler = "Normal", #MAF, NORMAL, NORMAL-DISCARD, MAD
-                 preemptiveDiscard = False):
+                 preemptiveDiscard = False,
+                 verbose = False):
 
         self.num_source = num_source
         self.num_packet = num_packet
@@ -26,6 +27,7 @@ class Network(object):
         self.preemption = preemption
         self.scheduler = scheduler
         self.preemptiveDiscard = preemptiveDiscard
+        self.verbose = verbose
 
         self.packet_generator(num_packet,num_source,arrival)
         self.Queue = self.Queue(queue,num_source,queueSize)
@@ -181,7 +183,8 @@ class Network(object):
 
     def controller(self):
         if not (self.controlSteps or any(self.Queue.waiting)):
-            print("END OF SIMULATION")
+            if self.verbose:
+                print("END OF SIMULATION")
             self.termination = True
             return 0
 
@@ -247,7 +250,7 @@ if __name__ == "__main__":
     logging = False
 
 
-    for arrRate in [2]:
+    for arrRate in [1]:
         print(arrRate)
         net = Network(num_source= num_source,queue="LCFS",arrival=("poisson",[arrRate]),service=("exponential",[1]*num_source))
         net.run()
