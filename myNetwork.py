@@ -3,6 +3,8 @@ import math
 import random
 import json
 
+np.random.seed(0)
+
 class Network(object):
     def __init__(self,
                  num_source = 5,
@@ -11,9 +13,9 @@ class Network(object):
                  arrival = ("poisson",[1]*5),
                  service = ("exponential",[0.1]*5),
                  queue = "FCFS",
-                 queueSize = None,
-                 preemption = True,
-                 scheduler = "Normal", #MAF, NORMAL, NORMAL-DISCARD, MAD
+                 queueSize = math.inf,
+                 preemption = False,
+                 scheduler = "Normal", #MAF, Normal, Normal-DISCARD, MAD
                  preemptiveDiscard = False,
                  verbose = False):
 
@@ -35,7 +37,8 @@ class Network(object):
         self.Scheduler = self.Scheduler(scheduler,preemption,num_source,self)
 
         self.currenttime = 0
-        self.arrival = []
+        self.inservice = []
+        self.preempted = []
         self.story = [[[0,0]] for i in range(num_source)]
         self.freshstory = [[[0, 0]] for i in range(num_source)]
         self.departure = math.inf
@@ -46,20 +49,19 @@ class Network(object):
             self.Qtype = queue
             self.size = queueSize
             self.waiting = [[]]*num_source #TODO story de yaptığımız gibi tanımlamak lazım
-        def add(self,source_id,packet):
-            # source_id = int(source_id)
+        def add(self,source_id,packettime):
             if self.Qtype == "FCFS":
-                self.waiting[source_id] = [packet] + self.waiting[source_id]
+                self.waiting[source_id] = [packettime] + self.waiting[source_id]
             elif self.Qtype == "LCFS":
-                self.waiting[source_id] = self.waiting[source_id] + [packet]
-
+                self.waiting[source_id] = self.waiting[source_id] + [packettime]
+            if self.size != math.inf: # Buffer size limit: when the queue is full new packets are discarded <FCFS> (old packets are discarded <LCFS>)
+                self.waiting[source_id] = self.waiting[source_id][-self.size:]
         def delete(self,source_id):
-            # source_id = int(source_id)
+            return self.waiting[source_id].pop()
+        def nextvalue_delete(self,source_id):
             return self.waiting[source_id].pop()
         def nextvalue(self,source_id):
             return self.waiting[source_id][-1]
-        def preempt(self,source_id,packet):
-            self.waiting[source_id] = self.waiting[source_id] + [packet]
 
     def packet_generator(self,num_packet,num_source,arrival,seed = 0):
         if arrival[0] == "poisson":
@@ -140,13 +142,11 @@ class Network(object):
                 self.cand_ids = [self.nonempties[i] for i in self.cand]
             return self.returnID()
 
-
         def returnID(self):
             if len(self.cand_ids) > 0:
                 return int(random.choice(self.cand_ids))
             else:
                 return []
-
 
     class Service(object):
         def __init__(self,num_source,num_packet,num_server,service,seed = 15):
@@ -168,14 +168,17 @@ class Network(object):
             return self.servicetime[source_id].pop(0)
 
     def newService(self,source_id):
-        self.arrival = self.Queue.nextvalue(source_id)
+        self.inservice = [self.Queue.nextvalue_delete(source_id), source_id]
+        if self.preempted != []:
+            self.Queue.add(self.preempted[1],self.preempted[0])
+            self.preempted = []
         self.servicetime = self.Service.time(source_id)
         self.departure = self.currenttime + self.servicetime
 
     def completeService(self,source_id):
-        self.store(source_id, self.arrival, self.departure)  # Complete service
-        if self.arrival > self.freshstory[source_id][-1][0]:
-            self.freshstore(source_id, self.arrival, self.departure)  # Age effective Complete service
+        self.store(source_id, self.inservice[0], self.departure)  # Complete service
+        if self.inservice[0] > self.freshstory[source_id][-1][0]:
+            self.freshstore(source_id, self.inservice[0], self.departure)  # Age effective Complete service
 
     def controller(self):
         if not (self.controlSteps or any(self.Queue.waiting)):
@@ -184,49 +187,30 @@ class Network(object):
             self.termination = True
             return 0
 
-        if self.preemption: # LCFS-preemptive için TODO burda 191-201 arası 221-231 arası ile aynı bunu birleştir
-            source_id = self.Scheduler.nextmove(self.currenttime)
+        source_id = self.Scheduler.nextmove(self.currenttime)
 
-            if source_id == []:
-                if not(self.controlSteps):
-                    self.termination = True
-                    return
-                self.currenttime, source_id = self.controlSteps.pop(0)
-                self.Queue.add(source_id, self.currenttime)
+        if source_id == []: # Queues are empty
+            self.currenttime, source_id = self.controlSteps.pop(0)
+            self.Queue.add(source_id, self.currenttime)
 
-            self.newService(source_id)
+        self.newService(source_id)
+
+        if self.preemption: # LCFS-preemptive için
+            source_id_new = []
+            source_id_action = source_id
             if len(self.controlSteps) and self.controlSteps[0][0] < self.departure:
-                if self.preemptiveDiscard:
-                    self.Queue.delete(source_id)
-                (self.currenttime, source_id_ib) = self.controlSteps.pop(0)
-                self.Queue.add(source_id_ib, self.currenttime)
-                new_source_id = self.Scheduler.nextmove(self.currenttime)
-                if not(source_id == source_id_ib or (new_source_id != source_id)):
-                    # NO PREEMPTION
-                    self.currenttime = self.departure
-                    self.Queue.delete(source_id)
-                    self.completeService(source_id)
+                (self.currenttime, source_id_new) = self.controlSteps.pop(0)
+                self.Queue.add(source_id_new, self.currenttime)
+                source_id_action = self.Scheduler.nextmove(self.currenttime)
+            if (source_id == source_id_new or (source_id_action != source_id)) and not(self.preemptiveDiscard): # PREEMPTION
+                self.preempted = self.inservice
             else:
                 self.currenttime = self.departure
-                self.Queue.delete(source_id)
                 self.completeService(source_id)
-
-
         else: # LCFS-nonpreemptive ve FCFS için #TODO LCFS-nonpreemptive çalışmıyor!!! (rate=1 --> age=5)
-            source_id = self.Scheduler.nextmove(self.currenttime)
-
-            if source_id == []:
-                if not(self.controlSteps):
-                    self.termination = True
-                    return
-                self.currenttime, source_id = self.controlSteps.pop(0)
-                self.Queue.add(source_id, self.currenttime)
-
-            self.newService(source_id)
-            self.Queue.delete(source_id)
             while len(self.controlSteps) and self.controlSteps[0][0] < self.departure:
-                (arrivaltime_ib, source_id_ib) = self.controlSteps.pop(0)
-                self.Queue.add(source_id_ib, arrivaltime_ib)
+                (arrivaltime_new, source_id_new) = self.controlSteps.pop(0)
+                self.Queue.add(source_id_new, arrivaltime_new)
             self.currenttime = self.departure
             self.completeService(source_id)
 
@@ -241,10 +225,9 @@ if __name__ == "__main__":
     num_source = 3
     logging = False
 
-
     for arrRate in [1]:
         print(arrRate)
-        net = Network(num_source= num_source,queue="LCFS",arrival=("poisson",[arrRate]),service=("exponential",[1]*num_source))
+        net = Network(num_source= num_source,queue="FCFS",arrival=("poisson",[arrRate]),service=("exponential",[1]*num_source))
         net.run()
 
         ## CALCULATE Average Age per user
