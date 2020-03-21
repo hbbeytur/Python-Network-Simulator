@@ -14,7 +14,7 @@ class Network(object):
                  service = ("exponential",[0.1]*5),
                  queue = "FCFS",
                  queueSize = math.inf,
-                 preemption = False,
+                 preemption = True,
                  scheduler = "Normal", #MAF, Normal, Normal-DISCARD, MAD
                  preemptiveDiscard = False,
                  verbose = False):
@@ -227,7 +227,7 @@ if __name__ == "__main__":
 
     for arrRate in [1]:
         print(arrRate)
-        net = Network(num_source= num_source,queue="FCFS",arrival=("poisson",[arrRate]),service=("exponential",[1]*num_source))
+        net = Network(num_source= num_source,queue="LCFS",arrival=("poisson",[arrRate]),service=("exponential",[1]*num_source))
         net.run()
 
         ## CALCULATE Average Age per user
