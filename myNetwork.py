@@ -7,7 +7,7 @@ class Network(object):
     def __init__(self,
                  num_source = 5,
                  num_server = 1,
-                 num_packet = 20000,
+                 num_packet = 10000,
                  arrival = ("poisson",[1]*5),
                  service = ("exponential",[0.1]*5),
                  queue = "FCFS",
@@ -77,10 +77,9 @@ class Network(object):
 
     def generatecontrolinstances(self,num_source,num_packet,arr):
         b = arr.flatten()
-        index = np.mod(b.argsort(),num_source)
+        index = np.mod(b.argsort(),num_source).astype(int)
         b.sort()
-        self.controlSteps = np.concatenate([[b],[index]]).T.tolist()
-
+        self.controlSteps = [[x,y] for x,y in zip(b,index)]
     def store(self,source_id,arrival,departure):
         self.story[source_id].append([arrival,departure])
 
@@ -163,20 +162,17 @@ class Network(object):
                 self.servicetime = np.random.gamma(2,np.divide(1, np.multiply(2,service[1])), (num_packet, num_source))
             self.servicetime = self.servicetime.T.tolist()
 
-        def time(self,source_id): #TODO: burda saçmalık var
-            # return np.random.exponential(1/self.service[1][source_id])
+        def time(self,source_id):
             if not self.servicetime[source_id]:
                 self.__init__(*self.arg)
             return self.servicetime[source_id].pop(0)
 
     def newService(self,source_id):
-        # source_id = int(source_id)
         self.arrival = self.Queue.nextvalue(source_id)
         self.servicetime = self.Service.time(source_id)
         self.departure = self.currenttime + self.servicetime
 
     def completeService(self,source_id):
-        # source_id = int(source_id)
         self.store(source_id, self.arrival, self.departure)  # Complete service
         if self.arrival > self.freshstory[source_id][-1][0]:
             self.freshstore(source_id, self.arrival, self.departure)  # Age effective Complete service
@@ -188,7 +184,7 @@ class Network(object):
             self.termination = True
             return 0
 
-        if self.preemption: # LCFS-preemptive için
+        if self.preemption: # LCFS-preemptive için TODO burda 191-201 arası 221-231 arası ile aynı bunu birleştir
             source_id = self.Scheduler.nextmove(self.currenttime)
 
             if source_id == []:
@@ -196,7 +192,6 @@ class Network(object):
                     self.termination = True
                     return
                 self.currenttime, source_id = self.controlSteps.pop(0)
-                source_id = int(source_id)
                 self.Queue.add(source_id, self.currenttime)
 
             self.newService(source_id)
@@ -204,7 +199,6 @@ class Network(object):
                 if self.preemptiveDiscard:
                     self.Queue.delete(source_id)
                 (self.currenttime, source_id_ib) = self.controlSteps.pop(0)
-                source_id_ib = int(source_id_ib)
                 self.Queue.add(source_id_ib, self.currenttime)
                 new_source_id = self.Scheduler.nextmove(self.currenttime)
                 if not(source_id == source_id_ib or (new_source_id != source_id)):
@@ -226,14 +220,12 @@ class Network(object):
                     self.termination = True
                     return
                 self.currenttime, source_id = self.controlSteps.pop(0)
-                source_id = int(source_id)
                 self.Queue.add(source_id, self.currenttime)
 
             self.newService(source_id)
             self.Queue.delete(source_id)
             while len(self.controlSteps) and self.controlSteps[0][0] < self.departure:
                 (arrivaltime_ib, source_id_ib) = self.controlSteps.pop(0)
-                source_id_ib = int(source_id_ib)
                 self.Queue.add(source_id_ib, arrivaltime_ib)
             self.currenttime = self.departure
             self.completeService(source_id)
