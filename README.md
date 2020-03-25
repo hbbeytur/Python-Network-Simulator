@@ -10,9 +10,8 @@ Python based modular continuous time event simulator for Age of Information rese
 #### Scheduler
 * MAF
 * MAD
-* _withoutscheduler_
+* LCFS
 
 #### Other Properties
-* Multiple Source with distinct service and arrival rates
-* _Multiple Server_
+* Multiple Source with separate service and arrival rates
 
